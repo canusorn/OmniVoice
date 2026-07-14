@@ -1,0 +1,7 @@
+cache/
+output/
+ref_audio/
+*.wav
+__pycache__/
+*.pyc
+.env

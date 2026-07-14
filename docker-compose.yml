@@ -1,0 +1,47 @@
+services:
+  omnivoice:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: omnivoice:latest
+    container_name: omnivoice
+    ports:
+      - "8001:8001"
+    volumes:
+      # HuggingFace cache: model weights downloaded only once
+      - ./cache/huggingface:/root/.cache/huggingface
+      # Generated audio output (bind mount external path)
+      - ./output:/output
+      # Place reference audio files here for easy access
+      - ./ref_audio:/ref_audio
+      # Bind mount app.py so you can edit without rebuilding
+      - ./app.py:/app/app.py
+    environment:
+      - HF_HOME=/root/.cache/huggingface
+      - HF_HUB_CACHE=/root/.cache/huggingface/hub
+      - HF_ENDPOINT=https://huggingface.co
+      # Disable XET protocol (use regular HTTP) for better compatibility
+      - HF_HUB_ENABLE_XET=0
+      # Long timeout for slow connections (1 hour per file)
+      - HF_HUB_DOWNLOAD_TIMEOUT=3600
+      # Disable huggingface_hub progress bar for cleaner logs
+      - HF_HUB_DISABLE_PROGRESS_BARS=1
+      - OUTPUT_DIR=/output
+      - REF_AUDIO_DIR=/ref_audio
+      - TORCH_HOME=/root/.cache/torch
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001', timeout=5)\""]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    stdin_open: true
+    tty: true
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
