@@ -81,124 +81,129 @@ D:\tts\OmniVoice\
 
 ## API Usage
 
-Gradio API can be accessed at `http://localhost:8001/gradio_api/`
+### `/api/tts` — Simple JSON API (recommended)
 
-### Get API Info
-
-```bash
-curl -X POST http://localhost:8001/gradio_api/api/info
-```
-
-### Predict (call a function)
+ไม่ต้อง upload file, ส่ง `ref://filename.wav` อ้างอิงไฟล์ใน `ref_audio/` โดยตรง
 
 ```bash
-curl -X POST http://localhost:8001/gradio_api/call/predict \
+curl -X POST http://localhost:8001/api/tts \
   -H "Content-Type: application/json" \
   -d '{
-    "data": [...]
+    "text": "สวัสดีครับ",
+    "language": "Thai",
+    "ref_audio": "ref://my_voice.wav",
+    "mode": "clone",
+    "num_step": 8,
+    "guidance_scale": 4.0
   }'
 ```
 
-### Python Example
-
 ```python
 import requests
 
-API_URL = "http://localhost:8001/gradio_api/call/predict"
-
-# Voice synthesis
-response = requests.post(API_URL, json={
-    "data": [
-        "สวัสดีครับ ยินดีต้อนรับ",   # text
-        "th",                        # language
-        None,                        # ref_audio (filepath/None)
-        None,                        # instruct
-        32,                          # num_step
-        2.0,                         # guidance_scale
-        True,                        # denoise
-        1.0,                         # speed
-        None,                        # duration
-        False,                       # preprocess_prompt
-        True,                        # postprocess_output
-        "tts"                        # mode: "tts" | "clone"
-    ]
+r = requests.post("http://localhost:8001/api/tts", json={
+    "text": "Hello world",
+    "language": "English",
+    "ref_audio": "ref://my_voice.wav",
+    "mode": "clone",        # "clone" or "design"
+    "num_step": 8,
+    "guidance_scale": 4.0,
 })
-
-print(response.json())
+print(r.json())  # returns audio + message
 ```
 
-### Voice Clone via API
+### `/gradio_api/` — Raw Gradio 6 API (low-level)
+
+ใช้ส่ง file โดยตรง + event polling:
 
 ```python
-import requests
+import requests, time
+
+API = "http://localhost:8001/gradio_api"
 
 # Upload reference audio first
-with open("speaker.wav", "rb") as f:
-    upload = requests.post(
-        "http://localhost:8001/upload",
-        files={"files": f}
-    )
-    ref_path = upload.json()[0]
+r = requests.post(f"{API}/upload", files={"files": open("speaker.wav", "rb")})
+path = r.json()[0]
 
-# Clone voice
-response = requests.post(
-    "http://localhost:8001/gradio_api/call/predict",
-    json={
-        "data": [
-            "Hello, this is a voice clone.",
-            "en",
-            ref_path,
-            None,
-            32,
-            2.0,
-            True,
-            1.0,
-            None,
-            False,
-            True,
-            "clone"
-        ]
-    }
-)
+# Send request → get event_id
+r = requests.post(f"{API}/call/_clone_fn", json={
+    "data": [
+        "สวัสดีครับ", "Thai",
+        {"path": path, "meta": {"_type": "gradio.FileData"}},  # ref_audio
+        None,     # ref_text
+        None,     # instruct
+        8,        # num_step
+        4.0,      # guidance_scale
+        True,     # denoise
+        1.0,      # speed
+        None,     # duration
+        False,    # preprocess_prompt
+        True,     # postprocess_output
+    ]
+})
+event_id = r.json()["event_id"]
 
-result = response.json()
-print(result)
+# Poll for result
+for _ in range(60):
+    time.sleep(2)
+    r = requests.get(f"{API}/call/_clone_fn/{event_id}")
+    if "event: complete" in r.text:
+        print("Done!")
+        break
 ```
 
-### JavaScript Example
+### Function Endpoints
 
-```javascript
-const API_URL = "http://localhost:8001/gradio_api/call/predict";
+| Function | Endpoint | Parameters (data array) |
+|----------|----------|------------------------|
+| Voice Clone | `/gradio_api/call/_clone_fn` | `[text, lang, ref_audio, ref_text, instruct, ns, gs, dn, sp, du, pp, po]` |
+| Voice Design | `/gradio_api/call/_design_fn` | `[text, lang, ns, gs, dn, sp, du, pp, po, ...groups]` |
 
-async function generateTTS(text, mode = "tts") {
-  const res = await fetch(API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      data: [text, "th", null, null, 32, 2.0, true, 1.0, null, false, true, mode]
-    })
-  });
-  const result = await res.json();
-  return result;
-}
+### List ref_audio Files
+
+```bash
+curl http://localhost:8001/ref_audio/files
+```
+```python
+requests.get("http://localhost:8001/ref_audio/files").json()
+# => {"files": ["my_voice.wav"]}
 ```
 
-### Parameters (data array order)
+### Language Values
+
+ใช้ชื่อภาษาเต็ม (ไม่ใช่รหัส ISO) เช่น `"Thai"`, `"English"`, `"Auto"` (600+ languages)
+
+### Parameters — Voice Clone (`_clone_fn`)
 
 | Index | Parameter | Type | Default | Description |
 |-------|-----------|------|---------|-------------|
-| 0 | `text` | string | — | ข้อความที่จะสังเคราะห์เสียง |
-| 1 | `language` | string | `"Auto"` | ภาษา (`"th"`, `"en"`, `"zh"`, `"ja"` หรือ `"Auto"`) |
-| 2 | `ref_audio` | string\|null | `null` | path reference audio (เฉพาะ mode "clone") |
-| 3 | `instruct` | string\|null | `null` | instruction prompt |
-| 4 | `num_step` | int | `32` | number of diffusion steps |
-| 5 | `guidance_scale` | float | `2.0` | classifier-free guidance scale |
-| 6 | `denoise` | bool | `True` | ใช้ denoising |
-| 7 | `speed` | float | `1.0` | ความเร็ว (1.0 = ปกติ) |
-| 8 | `duration` | float\|null | `null` | กำหนดความยาว (วินาที) |
-| 9 | `preprocess_prompt` | bool | `False` | preprocess prompt text |
-| 10 | `postprocess_output` | bool | `True` | postprocess output audio |
-| 11 | `mode` | string | `"tts"` | `"tts"` หรือ `"clone"` |
+| 0 | `text` | string | — | ข้อความ |
+| 1 | `language` | string | `"Auto"` | ชื่อภาษาเต็ม |
+| 2 | `ref_audio` | object | — | `{"path": "...", "meta": {"_type": "gradio.FileData"}}` |
+| 3 | `ref_text` | string\|null | `null` | ข้อความของ ref audio (ถ้าไม่ให้ ASR จะถอดเสียงให้) |
+| 4 | `instruct` | string\|null | `null` | instruction prompt |
+| 5 | `num_step` | int | `32` | diffusion steps |
+| 6 | `guidance_scale` | float | `4.0` | guidance scale (min 4) |
+| 7 | `denoise` | bool | `True` | denoising |
+| 8 | `speed` | float | `1.0` | ความเร็ว |
+| 9 | `duration` | float\|null | `null` | ความยาว (วินาที) |
+| 10 | `preprocess_prompt` | bool | `False` | preprocess |
+| 11 | `postprocess_output` | bool | `True` | postprocess |
+
+### Parameters — Voice Design (`_design_fn`)
+
+| Index | Parameter | Type | Default | Description |
+|-------|-----------|------|---------|-------------|
+| 0 | `text` | string | — | ข้อความ |
+| 1 | `language` | string | `"Auto"` | ชื่อภาษาเต็ม |
+| 2 | `num_step` | int | `32` | diffusion steps |
+| 3 | `guidance_scale` | float | `4.0` | guidance scale (min 4) |
+| 4 | `denoise` | bool | `True` | denoising |
+| 5 | `speed` | float | `1.0` | ความเร็ว |
+| 6 | `duration` | float\|null | `null` | ความยาว (วินาที) |
+| 7 | `preprocess_prompt` | bool | `False` | preprocess |
+| 8 | `postprocess_output` | bool | `True` | postprocess |
+| 9+ | `groups` | dropdowns | — | speaker attributes |
 
 ## Configuration
 
@@ -233,7 +238,7 @@ docker compose exec omnivoice python3 /app/app.py --device cpu
 | `--port` | `8001` | server port |
 | `--device` | `auto` | device (`cuda`, `cpu`) |
 | `--load-asr` | `False` | โหลด ASR model (Whisper) |
-| `--asr-model` | `openai/whisper-tiny` | ASR model name |
+| `--asr-model` | `openai/whisper-large-v3-turbo` | ASR model name |
 | `--share` | `False` | สร้าง public Gradio link |
 
 ## Troubleshooting
