@@ -122,7 +122,7 @@ import requests, time
 API = "http://localhost:8001/gradio_api"
 
 # Upload reference audio first
-r = requests.post(f"{API}/upload", files={"files": open("speaker.wav", "rb")})
+r = requests.post(f"{API}/upload", files={"files": open("my_voice.wav", "rb")})
 path = r.json()[0]
 
 # Send request → get event_id
