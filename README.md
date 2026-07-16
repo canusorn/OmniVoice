@@ -159,6 +159,13 @@ for _ in range(60):
 | Voice Clone | `/gradio_api/call/_clone_fn` | `[text, lang, ref_audio, ref_text, instruct, ns, gs, dn, sp, du, pp, po]` |
 | Voice Design | `/gradio_api/call/_design_fn` | `[text, lang, ns, gs, dn, sp, du, pp, po, ...groups]` |
 
+### Health Check
+
+```bash
+curl http://localhost:8001/health
+# => {"status":"healthy","model":"k2-fsa/OmniVoice","device":"cuda:0"}
+```
+
 ### List ref_audio Files
 
 ```bash
@@ -252,6 +259,15 @@ docker exec omnivoice ls -la /root/.cache/huggingface/hub/models--k2-fsa--OmniVo
 docker compose down
 Remove-Item -Recurse -Force .\cache\huggingface -ErrorAction SilentlyContinue
 docker compose up -d
+```
+
+### Health Check Fail
+```bash
+# API health
+curl http://localhost:8001/health
+
+# Docker health
+docker inspect --format='{{.State.Health.Status}}' omnivoice
 ```
 
 ### GPU ไม่ถูก detect

@@ -145,6 +145,10 @@ def main():
 
     app = demo.app
 
+    @app.get("/health")
+    def health():
+        return {"status": "healthy", "model": args.model, "device": str(device)}
+
     @app.get("/ref_audio/files")
     def list_ref_audio():
         import glob
