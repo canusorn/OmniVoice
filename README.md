@@ -93,8 +93,8 @@ curl -X POST http://localhost:8001/api/tts \
     "language": "Thai",
     "ref_audio": "ref://my_voice.wav",
     "mode": "clone",
-    "num_step": 8,
-    "guidance_scale": 4.0
+    "num_step": 64,
+    "guidance_scale": 3.0
   }'
 ```
 
@@ -106,8 +106,8 @@ r = requests.post("http://localhost:8001/api/tts", json={
     "language": "English",
     "ref_audio": "ref://my_voice.wav",
     "mode": "clone",        # "clone" or "design"
-    "num_step": 8,
-    "guidance_scale": 4.0,
+    "num_step": 64,
+    "guidance_scale": 3.0,
 })
 print(r.json())  # returns audio + message
 ```
@@ -132,8 +132,8 @@ r = requests.post(f"{API}/call/_clone_fn", json={
         {"path": path, "meta": {"_type": "gradio.FileData"}},  # ref_audio
         None,     # ref_text
         None,     # instruct
-        8,        # num_step
-        4.0,      # guidance_scale
+        64,       # num_step
+        3.0,      # guidance_scale
         True,     # denoise
         1.0,      # speed
         None,     # duration
@@ -189,8 +189,8 @@ requests.get("http://localhost:8001/ref_audio/files").json()
 | 2 | `ref_audio` | object | — | `{"path": "...", "meta": {"_type": "gradio.FileData"}}` |
 | 3 | `ref_text` | string\|null | `null` | ข้อความของ ref audio (ถ้าไม่ให้ ASR จะถอดเสียงให้) |
 | 4 | `instruct` | string\|null | `null` | instruction prompt |
-| 5 | `num_step` | int | `32` | diffusion steps |
-| 6 | `guidance_scale` | float | `4.0` | guidance scale (min 4) |
+| 5 | `num_step` | int | `64` | diffusion steps |
+| 6 | `guidance_scale` | float | `3.0` | guidance scale |
 | 7 | `denoise` | bool | `True` | denoising |
 | 8 | `speed` | float | `1.0` | ความเร็ว |
 | 9 | `duration` | float\|null | `null` | ความยาว (วินาที) |
@@ -203,8 +203,8 @@ requests.get("http://localhost:8001/ref_audio/files").json()
 |-------|-----------|------|---------|-------------|
 | 0 | `text` | string | — | ข้อความ |
 | 1 | `language` | string | `"Auto"` | ชื่อภาษาเต็ม |
-| 2 | `num_step` | int | `32` | diffusion steps |
-| 3 | `guidance_scale` | float | `4.0` | guidance scale (min 4) |
+| 2 | `num_step` | int | `64` | diffusion steps |
+| 3 | `guidance_scale` | float | `3.0` | guidance scale |
 | 4 | `denoise` | bool | `True` | denoising |
 | 5 | `speed` | float | `1.0` | ความเร็ว |
 | 6 | `duration` | float\|null | `null` | ความยาว (วินาที) |
