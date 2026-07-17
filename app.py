@@ -84,6 +84,12 @@ def make_generate_fn(model: OmniVoice):
                 ref_audio=ref_audio,
                 ref_text=ref_text,
             )
+            import gc
+            if hasattr(model, '_asr_pipe') and model._asr_pipe is not None:
+                del model._asr_pipe
+                model._asr_pipe = None
+                torch.cuda.empty_cache()
+                gc.collect()
 
         if instruct and instruct.strip():
             kw["instruct"] = instruct.strip()
