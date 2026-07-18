@@ -109,7 +109,31 @@ r = requests.post("http://localhost:8001/api/tts", json={
     "num_step": 64,
     "guidance_scale": 3.0,
 })
-print(r.json())  # returns audio + message
+print(r.json())
+```
+
+**Response (success):**
+```json
+{
+  "path": "/output/omnivoice_20260718_094843_815194.wav",
+  "url": "http://localhost:8001/audio/omnivoice_20260718_094843_815194.wav",
+  "sampling_rate": 24000,
+  "message": "Done. Saved: /output/omnivoice_20260718_094843_815194.wav"
+}
+```
+
+`r.json()["url"]` = direct download link, `r.json()["path"]` = container path, `r.json()["sampling_rate"]` = sample rate.
+
+You can play/download the audio directly from the `url` in your browser or use:
+```powershell
+Invoke-WebRequest -Uri (r.json()["url"]) -OutFile "output.wav"
+```
+
+**Note:** Audio files are saved in the `./output/` directory (mounted from host). Access generated files directly from `./output/` on your machine.
+
+**Response (error):**
+```json
+{ "error": "File not found: my_voice.wav" }
 ```
 
 ### `/gradio_api/` — Raw Gradio 6 API (low-level)

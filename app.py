@@ -164,72 +164,95 @@ def main():
                 files.append(os.path.basename(f))
         return {"files": sorted(files)}
 
+    import urllib.parse
+
+    @app.get("/audio/{filename:path}")
+    def serve_audio(filename: str):
+        from starlette.responses import FileResponse
+        safe = urllib.parse.unquote(filename)
+        filepath = os.path.join(OUTPUT_DIR, safe)
+        if not os.path.exists(filepath):
+            return {"error": f"File not found: {safe}"}
+        return FileResponse(filepath, media_type="audio/wav")
+
     @app.post("/api/tts")
     def api_tts(body: dict):
-        import time as _time, uuid, json as _json, httpx
+        import gc, soundfile as sf
+
+        text = body.get("text", "").strip()
+        if not text:
+            return {"error": "text is required"}
+
+        lang = body.get("language")
+        if lang and lang == "Auto":
+            lang = None
+
+        gen_config = OmniVoiceGenerationConfig(
+            num_step=int(body.get("num_step", 32)),
+            guidance_scale=float(body.get("guidance_scale", 2.0)),
+            denoise=bool(body.get("denoise", True)),
+            preprocess_prompt=bool(body.get("preprocess_prompt", True)),
+            postprocess_output=bool(body.get("postprocess_output", True)),
+        )
+
+        kw = dict(text=text, language=lang, generation_config=gen_config)
+
+        speed = body.get("speed")
+        if speed is not None and float(speed) != 1.0:
+            kw["speed"] = float(speed)
+
+        duration = body.get("duration")
+        if duration is not None and float(duration) > 0:
+            kw["duration"] = float(duration)
 
         mode = body.get("mode", "clone")
-        ref_audio = body.get("ref_audio")
-
-        with httpx.Client(base_url=f"http://127.0.0.1:{args.port}", timeout=600) as client:
+        if mode == "clone":
+            ref_audio = body.get("ref_audio")
+            if not ref_audio:
+                return {"error": "ref_audio is required for clone mode"}
 
             if isinstance(ref_audio, str) and ref_audio.startswith("ref://"):
                 filename = ref_audio.removeprefix("ref://")
-                src = os.path.join(REF_AUDIO_DIR, filename)
-                if not os.path.exists(src):
-                    return {"error": f"File not found: {filename}"}
-                with open(src, "rb") as f:
-                    upload = client.post("/gradio_api/upload", files={"files": ("file", f, "audio/wav")})
-                    upload.raise_for_status()
-                    ref_audio = {"path": upload.json()[0], "meta": {"_type": "gradio.FileData"}}
+                ref_audio = os.path.join(REF_AUDIO_DIR, filename)
 
-            if mode == "clone":
-                fn = "_clone_fn"
-                data = [
-                    body.get("text", ""),
-                    body.get("language", "Auto"),
-                    ref_audio,
-                    body.get("ref_text"),
-                    body.get("instruct"),
-                    body.get("num_step", 64),
-                    body.get("guidance_scale", 3.0),
-                    body.get("denoise", True),
-                    body.get("speed", 1.0),
-                    body.get("duration"),
-                    body.get("preprocess_prompt", False),
-                    body.get("postprocess_output", True),
-                ]
-            else:
-                fn = "_design_fn"
-                data = [
-                    body.get("text", ""),
-                    body.get("language", "Auto"),
-                    body.get("num_step", 64),
-                    body.get("guidance_scale", 3.0),
-                    body.get("denoise", True),
-                    body.get("speed", 1.0),
-                    body.get("duration"),
-                    body.get("preprocess_prompt", False),
-                    body.get("postprocess_output", True),
-                ]
+            if not os.path.exists(ref_audio):
+                return {"error": f"File not found: {ref_audio}"}
 
-            resp = client.post(f"/gradio_api/call/{fn}", json={"data": data})
-            resp.raise_for_status()
-            event_id = resp.json()["event_id"]
+            kw["voice_clone_prompt"] = model.create_voice_clone_prompt(
+                ref_audio=ref_audio,
+                ref_text=body.get("ref_text"),
+            )
+            if hasattr(model, '_asr_pipe') and model._asr_pipe is not None:
+                del model._asr_pipe
+                model._asr_pipe = None
+                torch.cuda.empty_cache()
+                gc.collect()
 
-            for _ in range(150):
-                _time.sleep(2)
-                resp = client.get(f"/gradio_api/call/{fn}/{event_id}")
-                text = resp.text
-                if '"error"' in text and '"error": null' not in text:
-                    return {"error": text}
-                if "event: complete" in text:
-                    for line in text.split("\n"):
-                        if line.startswith("data: "):
-                            return _json.loads(line.removeprefix("data: "))
-                    return {"result": text}
+        instruct = body.get("instruct")
+        if instruct and instruct.strip():
+            kw["instruct"] = instruct.strip()
 
-            return {"error": "timeout"}
+        try:
+            audio = model.generate(**kw)
+        except Exception as e:
+            logger.exception("Generation failed")
+            return {"error": f"{type(e).__name__}: {e}"}
+
+        waveform = (audio[0] * 32767).astype("int16")
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        filename = f"omnivoice_{ts}.wav"
+        filepath = os.path.join(OUTPUT_DIR, filename)
+        sf.write(filepath, waveform, model.sampling_rate)
+        logger.info(f"Saved: {filepath}")
+
+        download_url = f"http://127.0.0.1:{args.port}/audio/{urllib.parse.quote(filename)}"
+
+        return {
+            "path": filepath,
+            "url": download_url,
+            "sampling_rate": model.sampling_rate,
+            "message": f"Done. Saved: {filepath}",
+        }
 
     import time
     try:
